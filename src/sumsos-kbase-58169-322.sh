@@ -1,46 +1,42 @@
 #!/bin/bash
+#
+# Install and configure Percona XtraBackup
+##
 
-# Copyright (C) 2018 Pablo Iranzo Gómez (Pablo.Iranzo@redhat.com)
-# Code based on the regexps from sumsos from John Devereux (john_devereux@yahoo.com)
+## Prompt to continue
+function promptInstall {
+    echo -e "\n${blueBgWhiteBold}This script will install Percona XtraBackup.${NC}"
+    read -p 'Do you want to continue [y/N]? ' wish
+    if ! [[ "$wish" == "y" || "$wish" == "Y" ]] ; then
+        exit 0
+    fi
+}
 
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+## Echo this out to xtrabackup.list if file not found
+function addAptSource {
+    if ! [[ -f "/etc/apt/sources.list.d/xtrabackup.list" ]] ; then
+        echo -e "${green}Adding XtraBackup source and fetching key${NC}"
+        echo 'deb http://repo.percona.com/apt wheezy main' > /etc/apt/sources.list.d/xtrabackup.list
+        echo 'deb-src http://repo.percona.com/apt wheezy main' >> /etc/apt/sources.list.d/xtrabackup.list
+        apt-key adv --keyserver keys.gnupg.net --recv-keys 1C4CBDCDCD2EFD2A
+        apt-get update
+    else
+        echo -e "${yellow}Skipping, XtraBackup source set in /etc/apt/sources.list.d/${NC}"
+    fi
+}
 
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
+## Install xtrabackup
+function installXtrabackup {
+    PKG_OK=$(dpkg-query -W --showformat='${Status}\n' xtrabackup|grep "install ok installed")
+    if [[ "" == "$PKG_OK" ]] ; then
+        echo -e "${green}Installing XtraBackup from apt${NC}"
+        apt-get install xtrabackup
+    else
+        echo -e "${yellow}XtraBackup already installed${NC}"
+    fi
+}
 
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-# we can run this against fs snapshot or live system
-
-# long_name: Finds matches of kernel: rport-.*: blocked FC remote port time out: no longer a FCP target, removing starget
-# description: Finds matches of error kernel: rport-.*: blocked FC remote port time out: no longer a FCP target, removing starget
-
-REGEXP="kernel: rport-.*: blocked FC remote port time out: no longer a FCP target, removing starget"
-KCS=58169
-
-
-# priority: 500
-
-# Load common functions
-[[ -f "${CITELLUS_BASE}/common-functions.sh" ]] && . "${CITELLUS_BASE}/common-functions.sh"
-
-if [[ "x$CITELLUS_LIVE" = "x0" ]]; then
-    journal="$journalctl_file"
-else
-    journal="$(mktemp)"
-    trap "/bin/rm ${journal}" EXIT
-    journalctl -t systemd --no-pager --boot > ${journal}
-fi
-
-if is_lineinfile "${REGEXP}" ${journal} ${CITELLUS_ROOT}/var/log/messages ; then
-    echo $"Check Kbase: https://access.redhat.com/solutions/$KCS for more details about error: $REGEXP found in logs" >&2
-    exit ${RC_FAILED}
-else
-    exit ${RC_OKAY}
-fi
+promptInstall
+addAptSource
+installXtrabackup
+exit 0
